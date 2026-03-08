@@ -226,7 +226,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
           } catch {
             // best-effort close
           }
-        }).pipe(Effect.zipRight(Queue.shutdown(runtimeEventQueue))),
+        }).pipe(
+          Effect.flatMap(() => Queue.shutdown(runtimeEventQueue)),
+          Effect.asVoid,
+        ),
     );
 
     ws.on("message", (raw) => {
