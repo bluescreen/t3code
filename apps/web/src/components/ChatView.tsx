@@ -763,6 +763,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const latestTurnSettled = isLatestTurnSettled(activeLatestTurn, activeThread?.session ?? null);
   const activeProject = projects.find((p) => p.id === activeThread?.projectId);
+  const availableProviderSet = useMemo(
+    () => new Set((serverConfigQuery.data?.providers ?? []).map((status) => status.provider)),
+    [serverConfigQuery.data?.providers],
+  );
 
   useEffect(() => {
     if (!activeThread?.id) return;
@@ -783,7 +787,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   ]);
 
   const sessionProvider = activeThread?.session?.provider ?? null;
-  const selectedProviderByThreadId = composerDraft.provider;
+  const selectedProviderByThreadId =
+    composerDraft.provider === null
+      ? null
+      : availableProviderSet.size === 0 || availableProviderSet.has(composerDraft.provider)
+        ? composerDraft.provider
+        : null;
   const hasThreadStarted = Boolean(
     activeThread &&
     (activeThread.latestTurn !== null ||
