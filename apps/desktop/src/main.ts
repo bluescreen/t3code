@@ -66,6 +66,7 @@ const STATE_DIR = resolveDesktopStateDir();
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const debugBridgeLogs = process.env.DENKVIS_T3_DEBUG === "1";
 const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const APP_USER_MODEL_ID = "com.t3tools.t3code";
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -1266,6 +1267,19 @@ function createWindow(): BrowserWindow {
   });
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  if (debugBridgeLogs) {
+    window.webContents.on(
+      "console-message",
+      (_event, level, message, line, sourceId) => {
+        console.info("[desktop-renderer]", {
+          level,
+          message,
+          line,
+          sourceId,
+        });
+      },
+    );
+  }
   window.on("page-title-updated", (event) => {
     event.preventDefault();
     window.setTitle(APP_DISPLAY_NAME);

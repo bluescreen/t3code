@@ -23,6 +23,7 @@ import {
 import type { ProviderThreadSnapshot } from "../Services/ProviderAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { createLogger } from "../../logger.ts";
 
 interface DenkvisBridgeSessionPayload {
   readonly provider: string;
@@ -192,6 +193,8 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
     const baseUrl = bridgeBaseUrl(options);
     const token = bridgeToken(options);
     const provider = selectedBridgeProvider(options);
+    const debugBridgeEvents = process.env.DENKVIS_T3_DEBUG === "1";
+    const logger = createLogger("denkvis-bridge");
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const serverConfig = yield* Effect.service(ServerConfig);
 
@@ -239,12 +242,26 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
           | ProviderRuntimeEvent
           | { type?: string };
         if ((parsed as { type?: string }).type === "bridge.ready") {
+          if (debugBridgeEvents) {
+            logger.event("bridge ready", { provider, baseUrl });
+          }
           return;
+        }
+        const normalizedEvent = normalizeRuntimeEventProvider(
+          provider,
+          parsed,
+        ) as ProviderRuntimeEvent;
+        if (debugBridgeEvents) {
+          logger.event("incoming runtime event", {
+            provider,
+            type: normalizedEvent.type,
+            event: normalizedEvent,
+          });
         }
         void Effect.runPromise(
           Queue.offer(
             runtimeEventQueue,
-            normalizeRuntimeEventProvider(provider, parsed) as ProviderRuntimeEvent,
+            normalizedEvent,
           ),
         );
       } catch {

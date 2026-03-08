@@ -296,6 +296,28 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
     });
   }
 
+  function logIncomingRequest(raw: string, request: WebSocketRequest) {
+    if (!logWebSocketEvents) return;
+    logger.event("incoming request", {
+      id: request.id,
+      method: request.body.method,
+      payload: request.body.params,
+      raw,
+    });
+  }
+
+  function logOutgoingResponse(
+    requestId: string,
+    result: unknown,
+    error?: { message: string },
+  ) {
+    if (!logWebSocketEvents) return;
+    logger.event("outgoing response", {
+      id: requestId,
+      ...(error ? { error: error.message } : { result }),
+    });
+  }
+
   const encodePush = Schema.encodeEffect(Schema.fromJsonString(WsPush));
   const broadcastPush = Effect.fnUntraced(function* (push: WsPush) {
     const message = yield* encodePush(push);
@@ -923,6 +945,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
     const messageText = websocketRawToString(raw);
     if (messageText === null) {
+      logOutgoingResponse("unknown", null, {
+        message: "Invalid request format: Failed to read message",
+      });
       const errorResponse = yield* encodeResponse({
         id: "unknown",
         error: { message: "Invalid request format: Failed to read message" },
@@ -933,6 +958,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
 
     const request = parseNormalizedWebSocketRequest(messageText);
     if (request._tag === "Failure") {
+      logOutgoingResponse("unknown", null, {
+        message: `Invalid request format: ${messageFromCause(request.cause)}`,
+      });
       const errorResponse = yield* encodeResponse({
         id: "unknown",
         error: { message: `Invalid request format: ${messageFromCause(request.cause)}` },
@@ -941,8 +969,12 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       return;
     }
 
+    logIncomingRequest(messageText, request.value);
     const result = yield* Effect.exit(routeRequest(request.value));
     if (result._tag === "Failure") {
+      logOutgoingResponse(request.value.id, null, {
+        message: messageFromCause(result.cause),
+      });
       const errorResponse = yield* encodeResponse({
         id: request.value.id,
         error: { message: messageFromCause(result.cause) },
@@ -951,6 +983,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       return;
     }
 
+    logOutgoingResponse(request.value.id, result.value);
     const response = yield* encodeResponse({
       id: request.value.id,
       result: result.value,

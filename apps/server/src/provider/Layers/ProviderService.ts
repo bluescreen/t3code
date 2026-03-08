@@ -32,6 +32,7 @@ import {
 } from "../Services/ProviderSessionDirectory.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
+import { createLogger } from "../../logger.ts";
 
 export interface ProviderServiceLiveOptions {
   readonly canonicalEventLogPath?: string;
@@ -125,6 +126,8 @@ function readPersistedCwd(
 const makeProviderService = (options?: ProviderServiceLiveOptions) =>
   Effect.gen(function* () {
     const analytics = yield* Effect.service(AnalyticsService);
+    const debugRuntimeEvents = process.env.DENKVIS_T3_DEBUG === "1";
+    const logger = createLogger("provider-runtime");
     const canonicalEventLogger =
       options?.canonicalEventLogger ??
       (options?.canonicalEventLogPath !== undefined
@@ -140,6 +143,19 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
     const publishRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
       Effect.succeed(event).pipe(
+        Effect.tap((canonicalEvent) =>
+          debugRuntimeEvents
+            ? Effect.sync(() => {
+                logger.event("publish runtime event", {
+                  provider: canonicalEvent.provider,
+                  type: canonicalEvent.type,
+                  threadId: canonicalEvent.threadId,
+                  turnId: canonicalEvent.turnId,
+                  event: canonicalEvent,
+                });
+              })
+            : Effect.void,
+        ),
         Effect.tap((canonicalEvent) =>
           canonicalEventLogger
             ? canonicalEventLogger.write(canonicalEvent, null)
