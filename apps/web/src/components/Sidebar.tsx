@@ -291,6 +291,10 @@ export default function Sidebar() {
     ...serverConfigQueryOptions(),
     select: (config) => config.keybindings,
   });
+  const { data: defaultProvider = "codex" } = useQuery({
+    ...serverConfigQueryOptions(),
+    select: (config) => config.providers[0]?.provider ?? "codex",
+  });
   const queryClient = useQueryClient();
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const [addingProject, setAddingProject] = useState(false);
@@ -528,7 +532,7 @@ export default function Sidebar() {
           projectId,
           title,
           workspaceRoot: cwd,
-          defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
+          defaultModel: DEFAULT_MODEL_BY_PROVIDER[defaultProvider],
           createdAt,
         });
         console.info("[sidebar:add-project] project.create succeeded", {
@@ -565,7 +569,7 @@ export default function Sidebar() {
       });
       finishAddingProject();
     },
-    [focusMostRecentThreadForProject, handleNewThread, isAddingProject, projects],
+    [defaultProvider, focusMostRecentThreadForProject, handleNewThread, isAddingProject, projects],
   );
 
   const handleAddProject = () => {

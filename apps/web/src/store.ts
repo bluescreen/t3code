@@ -106,13 +106,18 @@ function mapProjectsFromReadModel(
     const existing =
       previous.find((entry) => entry.id === project.id) ??
       previous.find((entry) => entry.cwd === project.workspaceRoot);
+    const inferredProvider =
+      normalizeModelSlug(project.defaultModel, "claude") !== null ? "claude" : "codex";
     return {
       id: project.id,
       name: project.title,
       cwd: project.workspaceRoot,
       model:
         existing?.model ??
-        resolveModelSlug(project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER.codex),
+        resolveModelSlugForProvider(
+          inferredProvider,
+          project.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER[inferredProvider],
+        ),
       expanded:
         existing?.expanded ??
         (persistedExpandedProjectCwds.size > 0
