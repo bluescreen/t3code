@@ -44,6 +44,23 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
+function toKnownProviderKind(value: string | null | undefined): ProviderKind | undefined {
+  return value === "codex" || value === "claude" ? value : undefined;
+}
+
+function normalizeProviderForManagedBridge(
+  provider: ProviderKind | undefined,
+): ProviderKind | undefined {
+  if (
+    process.env.DENKVIS_T3_BRIDGE_URL?.trim() &&
+    process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude" &&
+    (provider === undefined || provider === "codex")
+  ) {
+    return "claude";
+  }
+  return provider;
+}
+
 function mapProviderSessionStatusToOrchestrationStatus(
   status: "connecting" | "ready" | "running" | "error" | "closed",
 ): OrchestrationSession["status"] {
@@ -216,9 +233,12 @@ const make = Effect.gen(function* () {
     }
 
     const desiredRuntimeMode = thread.runtimeMode;
-    const currentProvider: ProviderKind | undefined =
-      thread.session?.providerName === "codex" ? thread.session.providerName : undefined;
-    const preferredProvider: ProviderKind | undefined = options?.provider ?? currentProvider;
+    const currentProvider = normalizeProviderForManagedBridge(
+      toKnownProviderKind(thread.session?.providerName ?? undefined),
+    );
+    const preferredProvider: ProviderKind | undefined = normalizeProviderForManagedBridge(
+      options?.provider,
+    ) ?? currentProvider;
     const desiredModel = options?.model ?? thread.model;
     const effectiveCwd = resolveThreadWorkspaceCwd({
       thread,

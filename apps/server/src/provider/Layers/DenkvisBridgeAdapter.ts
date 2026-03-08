@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 import type {
   ApprovalRequestId,
   ProviderApprovalDecision,
+  ProviderKind,
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSession,
@@ -19,15 +20,9 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import {
-  CodexAdapter,
-  type CodexAdapterShape,
-} from "../Services/CodexAdapter.ts";
 import type { ProviderThreadSnapshot } from "../Services/ProviderAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
-
-const PROVIDER = "codex" as const;
 
 interface DenkvisBridgeSessionPayload {
   readonly provider: string;
@@ -60,6 +55,7 @@ interface DenkvisBridgeThreadPayload {
 interface DenkvisBridgeAdapterOptions {
   readonly baseUrl?: string;
   readonly token?: string;
+  readonly provider?: ProviderKind;
 }
 
 function bridgeBaseUrl(options?: DenkvisBridgeAdapterOptions): string {
@@ -81,12 +77,13 @@ function bridgeToken(options?: DenkvisBridgeAdapterOptions): string {
 }
 
 function toProcessError(
+  provider: ProviderKind,
   threadId: ThreadId,
   operation: string,
   cause: unknown,
 ): ProviderAdapterError {
   return new ProviderAdapterProcessError({
-    provider: PROVIDER,
+    provider,
     threadId,
     detail: cause instanceof Error ? cause.message : `${operation} failed`,
     cause,
@@ -94,12 +91,13 @@ function toProcessError(
 }
 
 function toRequestError(
+  provider: ProviderKind,
   threadId: ThreadId,
   method: string,
   cause: unknown,
 ): ProviderAdapterError {
   return new ProviderAdapterRequestError({
-    provider: PROVIDER,
+    provider,
     method,
     detail: cause instanceof Error ? cause.message : `${method} failed`,
     cause,
@@ -134,11 +132,20 @@ async function bridgeRequest<T>(
   return payload as T;
 }
 
+function selectedBridgeProvider(options?: DenkvisBridgeAdapterOptions): ProviderKind {
+  if (options?.provider !== undefined) {
+    return options.provider;
+  }
+  const raw = process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim();
+  return raw === "claude" ? "claude" : "codex";
+}
+
 function toProviderSession(
+  provider: ProviderKind,
   payload: DenkvisBridgeSessionPayload,
 ): ProviderSession {
   return {
-    provider: PROVIDER,
+    provider,
     status: payload.status,
     runtimeMode: payload.runtimeMode,
     ...(payload.cwd ? { cwd: payload.cwd } : {}),
@@ -157,6 +164,7 @@ function toProviderSession(
 }
 
 function normalizeRuntimeEventProvider(
+  provider: ProviderKind,
   event: ProviderRuntimeEvent | { type?: string },
 ): ProviderRuntimeEvent | { type?: string } {
   if (!event || typeof event !== "object" || !("provider" in event)) {
@@ -164,7 +172,7 @@ function normalizeRuntimeEventProvider(
   }
   return {
     ...event,
-    provider: PROVIDER,
+    provider,
   } as ProviderRuntimeEvent;
 }
 
@@ -184,6 +192,7 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
   Effect.gen(function* () {
     const baseUrl = bridgeBaseUrl(options);
     const token = bridgeToken(options);
+    const provider = selectedBridgeProvider(options);
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const serverConfig = yield* Effect.service(ServerConfig);
 
@@ -209,7 +218,7 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
             });
           }),
         catch: (cause) =>
-          toProcessError("bridge" as ThreadId, "events/connect", cause),
+          toProcessError(provider, "bridge" as ThreadId, "events/connect", cause),
       }),
       (connection) =>
         Effect.sync(() => {
@@ -233,7 +242,7 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
         void Effect.runPromise(
           Queue.offer(
             runtimeEventQueue,
-            normalizeRuntimeEventProvider(parsed) as ProviderRuntimeEvent,
+            normalizeRuntimeEventProvider(provider, parsed) as ProviderRuntimeEvent,
           ),
         );
       } catch {
@@ -241,15 +250,15 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
       }
     });
 
-    const startSession: CodexAdapterShape["startSession"] = (
+    const startSession = (
       input: ProviderSessionStartInput,
     ) => {
-      if (input.provider !== undefined && input.provider !== PROVIDER) {
+      if (input.provider !== undefined && input.provider !== provider) {
         return Effect.fail(
           new ProviderAdapterValidationError({
-            provider: PROVIDER,
+            provider,
             operation: "startSession",
-            issue: `Expected provider '${PROVIDER}' but received '${input.provider}'.`,
+            issue: `Expected provider '${provider}' but received '${input.provider}'.`,
           }),
         );
       }
@@ -257,6 +266,7 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
       return Effect.tryPromise({
         try: async () =>
           toProviderSession(
+            provider,
             await bridgeRequest<DenkvisBridgeSessionPayload>(
               baseUrl,
               token,
@@ -290,11 +300,11 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               },
             ),
           ),
-        catch: (cause) => toProcessError(input.threadId, "startSession", cause),
+        catch: (cause) => toProcessError(provider, input.threadId, "startSession", cause),
       });
     };
 
-    const sendTurn: CodexAdapterShape["sendTurn"] = (
+    const sendTurn = (
       input: ProviderSendTurnInput,
     ) => {
       return Effect.tryPromise({
@@ -345,11 +355,11 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               : {}),
           } satisfies ProviderTurnStartResult;
         },
-        catch: (cause) => toRequestError(input.threadId, "turn/start", cause),
+        catch: (cause) => toRequestError(provider, input.threadId, "turn/start", cause),
       });
     };
 
-    const interruptTurn: CodexAdapterShape["interruptTurn"] = (threadId) =>
+    const interruptTurn = (threadId: ThreadId) =>
       Effect.tryPromise({
         try: () =>
           bridgeRequest<Record<string, never>>(
@@ -361,10 +371,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               body: JSON.stringify({ threadId }),
             },
           ),
-        catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
+        catch: (cause) => toRequestError(provider, threadId, "turn/interrupt", cause),
       }).pipe(Effect.asVoid);
 
-    const respondToRequest: CodexAdapterShape["respondToRequest"] = (
+    const respondToRequest = (
       threadId: ThreadId,
       requestId: ApprovalRequestId,
       decision: ProviderApprovalDecision,
@@ -384,10 +394,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               }),
             },
           ),
-        catch: (cause) => toRequestError(threadId, "request/respond", cause),
+        catch: (cause) => toRequestError(provider, threadId, "request/respond", cause),
       }).pipe(Effect.asVoid);
 
-    const respondToUserInput: CodexAdapterShape["respondToUserInput"] = (
+    const respondToUserInput = (
       threadId: ThreadId,
       requestId: ApprovalRequestId,
       answers: ProviderUserInputAnswers,
@@ -407,10 +417,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               }),
             },
           ),
-        catch: (cause) => toRequestError(threadId, "user-input/respond", cause),
+        catch: (cause) => toRequestError(provider, threadId, "user-input/respond", cause),
       }).pipe(Effect.asVoid);
 
-    const stopSession: CodexAdapterShape["stopSession"] = (threadId) =>
+    const stopSession = (threadId: ThreadId) =>
       Effect.tryPromise({
         try: () =>
           bridgeRequest<Record<string, never>>(
@@ -422,10 +432,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               body: JSON.stringify({ threadId }),
             },
           ),
-        catch: (cause) => toRequestError(threadId, "session/stop", cause),
+        catch: (cause) => toRequestError(provider, threadId, "session/stop", cause),
       }).pipe(Effect.asVoid);
 
-    const listSessions: CodexAdapterShape["listSessions"] = () =>
+    const listSessions = () =>
       Effect.tryPromise({
         try: async () =>
           (
@@ -434,18 +444,18 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               token,
               "/v1/sessions",
             )
-          ).map(toProviderSession),
+          ).map((payload) => toProviderSession(provider, payload)),
         catch: () => [] as ReadonlyArray<ProviderSession>,
       });
 
-    const hasSession: CodexAdapterShape["hasSession"] = (threadId) =>
+    const hasSession = (threadId: ThreadId) =>
       listSessions().pipe(
         Effect.map((sessions) =>
           sessions.some((session) => session.threadId === threadId),
         ),
       );
 
-    const readThread: CodexAdapterShape["readThread"] = (threadId) =>
+    const readThread = (threadId: ThreadId) =>
       Effect.tryPromise({
         try: async () =>
           toThreadSnapshot(
@@ -455,10 +465,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               `/v1/threads/read?threadId=${encodeURIComponent(threadId)}`,
             ),
           ),
-        catch: (cause) => toRequestError(threadId, "thread/read", cause),
+        catch: (cause) => toRequestError(provider, threadId, "thread/read", cause),
       });
 
-    const rollbackThread: CodexAdapterShape["rollbackThread"] = (
+    const rollbackThread = (
       threadId,
       numTurns,
     ) =>
@@ -478,10 +488,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
               },
             ),
           ),
-        catch: (cause) => toRequestError(threadId, "thread/rollback", cause),
+        catch: (cause) => toRequestError(provider, threadId, "thread/rollback", cause),
       });
 
-    const stopAll: CodexAdapterShape["stopAll"] = () =>
+    const stopAll = () =>
       listSessions().pipe(
         Effect.flatMap((sessions) =>
           Effect.forEach(sessions, (session) => stopSession(session.threadId), {
@@ -492,7 +502,7 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
       );
 
     return {
-      provider: PROVIDER,
+      provider,
       capabilities: {
         sessionModelSwitch: "restart-session",
       },
@@ -508,11 +518,11 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
       rollbackThread,
       stopAll,
       streamEvents: Stream.fromQueue(runtimeEventQueue),
-    } satisfies CodexAdapterShape;
+    };
   });
 
-export function makeDenkvisBridgeCodexAdapterLive(
+export function makeDenkvisBridgeAdapter(
   options?: DenkvisBridgeAdapterOptions,
 ) {
-  return Layer.effect(CodexAdapter, makeAdapter(options));
+  return makeAdapter(options);
 }

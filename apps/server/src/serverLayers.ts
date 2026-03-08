@@ -19,8 +19,11 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { ProviderUnsupportedError } from "./provider/Errors";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
-import { makeDenkvisBridgeCodexAdapterLive } from "./provider/Layers/DenkvisBridgeAdapter";
-import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
+import { makeDenkvisBridgeAdapter } from "./provider/Layers/DenkvisBridgeAdapter";
+import {
+  ProviderAdapterRegistryLive,
+  makeProviderAdapterRegistryLive,
+} from "./provider/Layers/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
@@ -36,6 +39,7 @@ import { GitServiceLive } from "./git/Layers/GitService";
 import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
+import type { ProviderKind } from "@t3tools/contracts";
 
 export function makeServerProviderLayer(): Layer.Layer<
   ProviderService,
@@ -55,13 +59,24 @@ export function makeServerProviderLayer(): Layer.Layer<
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),
     );
-    const codexAdapterLayer = process.env.DENKVIS_T3_BRIDGE_URL?.trim()
-      ? makeDenkvisBridgeCodexAdapterLive()
-      : makeCodexAdapterLive(nativeEventLogger ? { nativeEventLogger } : undefined);
-    const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
-      Layer.provide(codexAdapterLayer),
-      Layer.provideMerge(providerSessionDirectoryLayer),
-    );
+    const adapterRegistryLayer = process.env.DENKVIS_T3_BRIDGE_URL?.trim()
+      ? makeProviderAdapterRegistryLive({
+          adapters: [
+            yield* makeDenkvisBridgeAdapter({
+              provider: (
+                process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude"
+                  ? "claude"
+                  : "codex"
+              ) as ProviderKind,
+            }),
+          ],
+        }).pipe(Layer.provideMerge(providerSessionDirectoryLayer))
+      : ProviderAdapterRegistryLive.pipe(
+          Layer.provide(
+            makeCodexAdapterLive(nativeEventLogger ? { nativeEventLogger } : undefined),
+          ),
+          Layer.provideMerge(providerSessionDirectoryLayer),
+        );
     return makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
     ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));

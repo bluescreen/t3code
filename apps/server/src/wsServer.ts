@@ -12,6 +12,7 @@ import type { Duplex } from "node:stream";
 import Mime from "@effect/platform-node/Mime";
 import {
   CommandId,
+  DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ClientOrchestrationCommand,
   type OrchestrationCommand,
@@ -649,12 +650,16 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       );
       let bootstrapProjectId: ProjectId;
       let bootstrapProjectDefaultModel: string;
+      const bridgeProvider =
+        process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude"
+          ? "claude"
+          : "codex";
 
       if (!existingProject) {
         const createdAt = new Date().toISOString();
         bootstrapProjectId = ProjectId.makeUnsafe(crypto.randomUUID());
         const bootstrapProjectTitle = path.basename(cwd) || "project";
-        bootstrapProjectDefaultModel = "gpt-5-codex";
+        bootstrapProjectDefaultModel = DEFAULT_MODEL_BY_PROVIDER[bridgeProvider];
         yield* orchestrationEngine.dispatch({
           type: "project.create",
           commandId: CommandId.makeUnsafe(crypto.randomUUID()),
@@ -666,7 +671,8 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
         });
       } else {
         bootstrapProjectId = existingProject.id;
-        bootstrapProjectDefaultModel = existingProject.defaultModel ?? "gpt-5-codex";
+        bootstrapProjectDefaultModel =
+          existingProject.defaultModel ?? DEFAULT_MODEL_BY_PROVIDER[bridgeProvider];
       }
 
       const existingThread = snapshot.threads.find(

@@ -50,3 +50,7 @@ export const ProviderAdapterRegistryLive = Layer.effect(
   ProviderAdapterRegistry,
   makeProviderAdapterRegistry(),
 );
+
+export function makeProviderAdapterRegistryLive(options?: ProviderAdapterRegistryLiveOptions) {
+  return Layer.effect(ProviderAdapterRegistry, makeProviderAdapterRegistry(options));
+}

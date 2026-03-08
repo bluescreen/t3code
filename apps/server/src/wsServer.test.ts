@@ -12,6 +12,7 @@ import { ServerConfig, type ServerConfigShape } from "./config";
 import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
 
 import {
+  DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_TERMINAL_ID,
   EDITORS,
   EventId,
@@ -631,7 +632,7 @@ describe("WebSocket Server", () => {
           id: bootstrapProjectId,
           workspaceRoot: "/test/bootstrap-workspace",
           title: "bootstrap-workspace",
-          defaultModel: "gpt-5-codex",
+          defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
         }),
       ]),
     );
@@ -641,7 +642,7 @@ describe("WebSocket Server", () => {
           id: bootstrapThreadId,
           projectId: bootstrapProjectId,
           title: "New thread",
-          model: "gpt-5-codex",
+          model: DEFAULT_MODEL_BY_PROVIDER.codex,
           branch: null,
           worktreePath: null,
         }),
