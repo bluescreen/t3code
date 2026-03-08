@@ -650,10 +650,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       );
       let bootstrapProjectId: ProjectId;
       let bootstrapProjectDefaultModel: string;
-      const bridgeProvider =
-        process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude"
-          ? "claude"
-          : "codex";
+      const bridgeProvider = process.env.DENKVIS_T3_BRIDGE_URL?.trim() ? "denkvis" : "codex";
 
       if (!existingProject) {
         const createdAt = new Date().toISOString();

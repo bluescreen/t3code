@@ -39,7 +39,6 @@ import { GitServiceLive } from "./git/Layers/GitService";
 import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
 import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
-import type { ProviderKind } from "@t3tools/contracts";
 
 export function makeServerProviderLayer(): Layer.Layer<
   ProviderService,
@@ -63,11 +62,7 @@ export function makeServerProviderLayer(): Layer.Layer<
       ? makeProviderAdapterRegistryLive({
           adapters: [
             yield* makeDenkvisBridgeAdapter({
-              provider: (
-                process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude"
-                  ? "claude"
-                  : "codex"
-              ) as ProviderKind,
+              provider: "denkvis",
             }),
           ],
         }).pipe(Layer.provideMerge(providerSessionDirectoryLayer))

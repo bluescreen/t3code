@@ -5512,27 +5512,27 @@ const COMING_SOON_PROVIDER_OPTIONS = [
 
 function getCustomModelOptionsByProvider(settings: {
   customCodexModels: readonly string[];
-  customClaudeModels: readonly string[];
+  customDenkvisModels: readonly string[];
 }): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   return {
     codex: getAppModelOptions("codex", settings.customCodexModels),
-    claude: getAppModelOptions("claude", settings.customClaudeModels),
+    denkvis: getAppModelOptions("denkvis", settings.customDenkvisModels),
   };
 }
 
 function getCustomModelsForProvider(
   settings: {
     customCodexModels: readonly string[];
-    customClaudeModels: readonly string[];
+    customDenkvisModels: readonly string[];
   },
   provider: ProviderKind,
 ): readonly string[] {
-  return provider === "claude" ? settings.customClaudeModels : settings.customCodexModels;
+  return provider === "denkvis" ? settings.customDenkvisModels : settings.customCodexModels;
 }
 
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
-  claude: ClaudeAI,
+  denkvis: ClaudeAI,
   claudeCode: ClaudeAI,
   cursor: CursorIcon,
 };

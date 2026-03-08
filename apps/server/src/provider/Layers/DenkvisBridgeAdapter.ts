@@ -136,8 +136,7 @@ function selectedBridgeProvider(options?: DenkvisBridgeAdapterOptions): Provider
   if (options?.provider !== undefined) {
     return options.provider;
   }
-  const raw = process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim();
-  return raw === "claude" ? "claude" : "codex";
+  return "denkvis";
 }
 
 function toProviderSession(

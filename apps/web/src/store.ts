@@ -106,8 +106,9 @@ function mapProjectsFromReadModel(
     const existing =
       previous.find((entry) => entry.id === project.id) ??
       previous.find((entry) => entry.cwd === project.workspaceRoot);
+    const normalizedDefaultModel = normalizeModelSlug(project.defaultModel, "codex");
     const inferredProvider =
-      normalizeModelSlug(project.defaultModel, "claude") !== null ? "claude" : "codex";
+      normalizedDefaultModel && CODEX_MODEL_SLUGS.has(normalizedDefaultModel) ? "codex" : "denkvis";
     return {
       id: project.id,
       name: project.title,
@@ -148,25 +149,25 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claude") {
+  if (providerName === "codex" || providerName === "denkvis") {
     return providerName;
   }
   return "codex";
 }
 
 const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
-const CLAUDE_MODEL_SLUGS = new Set<string>(getModelOptions("claude").map((option) => option.slug));
+const DENKVIS_MODEL_SLUGS = new Set<string>(getModelOptions("denkvis").map((option) => option.slug));
 
 function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
 }): ProviderKind {
-  if (input.sessionProviderName === "codex" || input.sessionProviderName === "claude") {
+  if (input.sessionProviderName === "codex" || input.sessionProviderName === "denkvis") {
     return input.sessionProviderName;
   }
-  const normalizedClaude = normalizeModelSlug(input.model, "claude");
-  if (normalizedClaude && CLAUDE_MODEL_SLUGS.has(normalizedClaude)) {
-    return "claude";
+  const normalizedDenkvis = normalizeModelSlug(input.model, "denkvis");
+  if (normalizedDenkvis && DENKVIS_MODEL_SLUGS.has(normalizedDenkvis)) {
+    return "denkvis";
   }
   const normalizedCodex = normalizeModelSlug(input.model, "codex");
   if (normalizedCodex && CODEX_MODEL_SLUGS.has(normalizedCodex)) {

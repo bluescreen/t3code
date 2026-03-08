@@ -45,7 +45,7 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
 }
 
 function toKnownProviderKind(value: string | null | undefined): ProviderKind | undefined {
-  return value === "codex" || value === "claude" ? value : undefined;
+  return value === "codex" || value === "denkvis" ? value : undefined;
 }
 
 function normalizeProviderForManagedBridge(
@@ -53,10 +53,9 @@ function normalizeProviderForManagedBridge(
 ): ProviderKind | undefined {
   if (
     process.env.DENKVIS_T3_BRIDGE_URL?.trim() &&
-    process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude" &&
-    (provider === undefined || provider === "codex")
+    (provider === undefined || provider === "codex" || provider === "denkvis")
   ) {
-    return "claude";
+    return "denkvis";
   }
   return provider;
 }

@@ -27,12 +27,11 @@ function decodeProviderKind(
 ): Effect.Effect<ProviderKind, ProviderSessionDirectoryPersistenceError> {
   if (
     process.env.DENKVIS_T3_BRIDGE_URL?.trim() &&
-    process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() === "claude" &&
-    providerName === "codex"
+    (providerName === "codex" || providerName === "claude" || providerName === "denkvis")
   ) {
-    return Effect.succeed("claude");
+    return Effect.succeed("denkvis");
   }
-  if (providerName === "codex" || providerName === "claude") {
+  if (providerName === "codex" || providerName === "denkvis") {
     return Effect.succeed(providerName);
   }
   return Effect.fail(

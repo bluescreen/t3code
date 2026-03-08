@@ -55,11 +55,11 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     example: "gpt-6.7-codex-ultra-preview",
   },
   {
-    provider: "claude",
-    title: "Claude",
-    description: "Save additional Claude model slugs for the picker and `/model` command.",
-    placeholder: "your-claude-model-slug",
-    example: "claude-sonnet",
+    provider: "denkvis",
+    title: "Denkvis",
+    description: "Save additional Denkvis bridge model slugs for the picker and `/model` command.",
+    placeholder: "your-managed-model-slug",
+    example: "managed",
   },
 ] as const;
 
@@ -70,8 +70,8 @@ function getCustomModelsForProvider(
   switch (provider) {
     case "codex":
       return settings.customCodexModels;
-    case "claude":
-      return settings.customClaudeModels;
+    case "denkvis":
+      return settings.customDenkvisModels;
   }
 }
 
@@ -82,8 +82,8 @@ function getDefaultCustomModelsForProvider(
   switch (provider) {
     case "codex":
       return defaults.customCodexModels;
-    case "claude":
-      return defaults.customClaudeModels;
+    case "denkvis":
+      return defaults.customDenkvisModels;
   }
 }
 
@@ -91,8 +91,8 @@ function patchCustomModels(provider: ProviderKind, models: string[]) {
   switch (provider) {
     case "codex":
       return { customCodexModels: models };
-    case "claude":
-      return { customClaudeModels: models };
+    case "denkvis":
+      return { customDenkvisModels: models };
   }
 }
 
@@ -106,7 +106,7 @@ function SettingsRouteView() {
     Record<ProviderKind, string>
   >({
     codex: "",
-    claude: "",
+    denkvis: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>

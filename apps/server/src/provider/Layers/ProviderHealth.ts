@@ -26,10 +26,10 @@ import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHe
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
+const DENKVIS_PROVIDER = "denkvis" as const;
 
 function selectedBridgeProvider(): ProviderKind {
-  const raw = process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim();
-  return raw === "claude" ? "claude" : "codex";
+  return DENKVIS_PROVIDER;
 }
 
 // ── Pure helpers ────────────────────────────────────────────────────
@@ -212,11 +212,11 @@ export const checkCodexProviderStatus: Effect.Effect<
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
   const denkvisBridgeUrl = process.env.DENKVIS_T3_BRIDGE_URL?.trim();
-  const denkvisRuntimeProvider = selectedBridgeProvider();
+  const denkvisRuntimeProvider = process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() || "unknown";
 
   if (denkvisBridgeUrl) {
     return {
-      provider: denkvisRuntimeProvider,
+      provider: selectedBridgeProvider(),
       status: "ready" as const,
       available: true,
       authStatus: "authenticated" as const,
