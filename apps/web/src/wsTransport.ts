@@ -31,20 +31,11 @@ export class WsTransport {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
-  private readonly url: string;
+  private url: string | null = null;
+  private readonly explicitUrl?: string;
 
   constructor(url?: string) {
-    const bridgeUrl = window.desktopBridge?.getWsUrl();
-    // In dev mode, VITE_WS_URL points to the server's WebSocket endpoint.
-    // In production, the page is served by the WS server on the same host:port.
-    const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
-    this.url =
-      url ??
-      (bridgeUrl && bridgeUrl.length > 0
-        ? bridgeUrl
-        : envUrl && envUrl.length > 0
-          ? envUrl
-          : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`);
+    this.explicitUrl = url;
     this.connect();
   }
 
@@ -59,6 +50,7 @@ export class WsTransport {
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
+        console.error("[ws] request timed out", { method, id, url: this.url });
         reject(new Error(`Request timed out: ${method}`));
       }, REQUEST_TIMEOUT_MS);
 
@@ -105,12 +97,22 @@ export class WsTransport {
 
   private connect() {
     if (this.disposed) return;
+    const url = this.resolveConnectUrl();
+    if (!url) {
+      console.warn("[ws] waiting for desktop bridge websocket url", {
+        protocol: window.location.protocol,
+      });
+      this.scheduleReconnect();
+      return;
+    }
+    this.url = url;
 
-    const ws = new WebSocket(this.url);
+    const ws = new WebSocket(url);
 
     ws.addEventListener("open", () => {
       this.ws = ws;
       this.reconnectAttempt = 0;
+      console.info("[ws] connected", { url: this.url });
     });
 
     ws.addEventListener("message", (event) => {
@@ -119,10 +121,12 @@ export class WsTransport {
 
     ws.addEventListener("close", () => {
       this.ws = null;
+      console.warn("[ws] closed", { url: this.url });
       this.scheduleReconnect();
     });
 
-    ws.addEventListener("error", () => {
+    ws.addEventListener("error", (event) => {
+      console.error("[ws] error", { url: this.url, event });
       // close event will fire after error
     });
   }
@@ -178,6 +182,13 @@ export class WsTransport {
       return;
     }
 
+    console.warn("[ws] waiting for socket to open before sending request", {
+      url: this.url,
+      method: message.body._tag,
+      id: message.id,
+      readyState: this.ws?.readyState ?? null,
+    });
+
     // If not connected, wait for connection
     const waitForOpen = () => {
       const check = setInterval(() => {
@@ -209,5 +220,39 @@ export class WsTransport {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private resolveConnectUrl(): string | null {
+    if (this.explicitUrl && this.explicitUrl.length > 0) {
+      console.info("[ws] using explicit websocket url", { url: this.explicitUrl });
+      return this.explicitUrl;
+    }
+
+    const bridgeUrl = window.desktopBridge?.getWsUrl?.();
+    if (typeof bridgeUrl === "string" && bridgeUrl.length > 0) {
+      console.info("[ws] using desktop bridge websocket url", { url: bridgeUrl });
+      return bridgeUrl;
+    }
+
+    const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
+    if (envUrl && envUrl.length > 0) {
+      console.info("[ws] using VITE_WS_URL websocket url", { url: envUrl });
+      return envUrl;
+    }
+
+    if (window.location.protocol === "t3:") {
+      console.warn("[ws] no websocket url available yet for desktop scheme", {
+        protocol: window.location.protocol,
+        hasDesktopBridge: Boolean(window.desktopBridge),
+      });
+      return null;
+    }
+
+    const fallbackUrl = `ws://${window.location.hostname}:${window.location.port}`;
+    console.warn("[ws] using same-origin websocket fallback", {
+      url: fallbackUrl,
+      protocol: window.location.protocol,
+    });
+    return fallbackUrl;
   }
 }

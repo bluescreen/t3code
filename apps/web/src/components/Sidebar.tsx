@@ -506,8 +506,23 @@ export default function Sidebar() {
       const projectId = newProjectId();
       const createdAt = new Date().toISOString();
       const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd;
+      const bridgeWsUrl = window.desktopBridge?.getWsUrl?.() ?? null;
+      const pendingWarning = window.setTimeout(() => {
+        console.warn("[sidebar:add-project] request still pending", {
+          cwd,
+          projectId,
+          title,
+          bridgeWsUrl,
+        });
+      }, 5_000);
       try {
-        await api.orchestration.dispatchCommand({
+        console.info("[sidebar:add-project] dispatching project.create", {
+          cwd,
+          projectId,
+          title,
+          bridgeWsUrl,
+        });
+        const result = await api.orchestration.dispatchCommand({
           type: "project.create",
           commandId: newCommandId(),
           projectId,
@@ -516,14 +531,38 @@ export default function Sidebar() {
           defaultModel: DEFAULT_MODEL_BY_PROVIDER.codex,
           createdAt,
         });
-        await handleNewThread(projectId).catch(() => undefined);
+        console.info("[sidebar:add-project] project.create succeeded", {
+          cwd,
+          projectId,
+          sequence: result.sequence,
+        });
+        await handleNewThread(projectId).catch((error) => {
+          console.warn("[sidebar:add-project] failed to create draft thread after project.create", {
+            cwd,
+            projectId,
+            error,
+          });
+        });
       } catch (error) {
+        window.clearTimeout(pendingWarning);
+        console.error("[sidebar:add-project] project.create failed", {
+          cwd,
+          projectId,
+          title,
+          bridgeWsUrl,
+          error,
+        });
         setIsAddingProject(false);
         setAddProjectError(
           error instanceof Error ? error.message : "An error occurred while adding the project.",
         );
         return;
       }
+      window.clearTimeout(pendingWarning);
+      console.info("[sidebar:add-project] add project flow finished", {
+        cwd,
+        projectId,
+      });
       finishAddingProject();
     },
     [focusMostRecentThreadForProject, handleNewThread, isAddingProject, projects],

@@ -50,6 +50,32 @@ export interface SqliteMemoryClientConfig extends Omit<
   "filename" | "readonly"
 > {}
 
+type StatementSyncCompat = StatementSync & {
+  readonly sourceSQL?: string;
+  setReturnArrays?: (enabled: boolean) => void;
+};
+
+const SQL_RETURNS_ROWS_PREFIX = /^(?:\s*(?:select|pragma|explain)\b|\s*with\b)/i;
+const SQL_RETURNS_ROWS_FALLBACK = /\breturning\b/i;
+
+function statementReturnsRows(statement: StatementSyncCompat): boolean {
+  const sql = statement.sourceSQL?.trim();
+  if (!sql) {
+    return true;
+  }
+  return SQL_RETURNS_ROWS_PREFIX.test(sql) || SQL_RETURNS_ROWS_FALLBACK.test(sql);
+}
+
+function rowToValues(row: unknown): ReadonlyArray<unknown> {
+  if (Array.isArray(row)) {
+    return row;
+  }
+  if (typeof row === "object" && row !== null) {
+    return Object.values(row);
+  }
+  return [row];
+}
+
 const makeWithDatabase = (
   options: SqliteClientConfig,
   openDatabase: () => DatabaseSync,
@@ -68,13 +94,13 @@ const makeWithDatabase = (
         Effect.sync(() => db.close()),
       );
 
-      const statementReaderCache = new WeakMap<StatementSync, boolean>();
-      const hasRows = (statement: StatementSync): boolean => {
+      const statementReaderCache = new WeakMap<StatementSyncCompat, boolean>();
+      const hasRows = (statement: StatementSyncCompat): boolean => {
         const cached = statementReaderCache.get(statement);
         if (cached !== undefined) {
           return cached;
         }
-        const value = statement.columns().length > 0;
+        const value = statementReturnsRows(statement);
         statementReaderCache.set(statement, value);
         return value;
       };
@@ -95,9 +121,10 @@ const makeWithDatabase = (
         raw: boolean,
       ) =>
         Effect.withFiber<ReadonlyArray<any>, SqlError>((fiber) => {
+          const compatStatement = statement as StatementSyncCompat;
           statement.setReadBigInts(Boolean(ServiceMap.get(fiber.services, Client.SafeIntegers)));
           try {
-            if (hasRows(statement)) {
+            if (hasRows(compatStatement)) {
               return Effect.succeed(statement.all(...(params as any)));
             }
             const result = statement.run(...(params as any));
@@ -116,24 +143,17 @@ const makeWithDatabase = (
           (statement) =>
             Effect.try({
               try: () => {
-                if (hasRows(statement)) {
-                  statement.setReturnArrays(true);
-                  // Safe to cast to array after we've setReturnArrays(true)
-                  return statement.all(...(params as any)) as unknown as ReadonlyArray<
-                    ReadonlyArray<unknown>
-                  >;
+                const compatStatement = statement as StatementSyncCompat;
+                if (hasRows(compatStatement)) {
+                  const rows = statement.all(...(params as any)) as ReadonlyArray<unknown>;
+                  return rows.map(rowToValues);
                 }
                 statement.run(...(params as any));
                 return [];
               },
               catch: (cause) => new SqlError({ cause, message: "Failed to execute statement" }),
             }),
-          (statement) =>
-            Effect.sync(() => {
-              if (hasRows(statement)) {
-                statement.setReturnArrays(false);
-              }
-            }),
+          () => Effect.void,
         );
 
       return identity<Connection>({

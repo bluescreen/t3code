@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 export const DESKTOP_WS_URL_FILE_NAME = "desktop-ws-url";
 
-export type ExternalBridgeSource = "env" | "file";
+export type ExternalBridgeSource = "file";
 
 export interface ResolvedExternalBridgeWsUrl {
   readonly source: ExternalBridgeSource;
@@ -19,15 +19,36 @@ export interface ResolveExternalBridgeWsUrlOptions {
   readonly onReadError?: (error: Error, filePath: string) => void;
 }
 
-export function resolveDesktopStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  return env.T3CODE_STATE_DIR?.trim() || Path.join(OS.homedir(), ".t3", "userdata");
+export function resolveDesktopStateDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return (
+    env.T3CODE_STATE_DIR?.trim() || Path.join(OS.homedir(), ".t3", "userdata")
+  );
 }
 
 export function resolveDesktopWsUrlFilePath(
   env: NodeJS.ProcessEnv = process.env,
   stateDir = resolveDesktopStateDir(env),
 ): string {
-  return env.T3CODE_DESKTOP_WS_URL_FILE?.trim() || Path.join(stateDir, DESKTOP_WS_URL_FILE_NAME);
+  return Path.join(stateDir, DESKTOP_WS_URL_FILE_NAME);
+}
+
+export function redactBridgeWsUrlForLog(wsUrl: string): string {
+  const trimmed = wsUrl.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.searchParams.has("token")) {
+      parsed.searchParams.set("token", "<redacted>");
+    }
+    return parsed.toString();
+  } catch {
+    return trimmed.replace(/([?&]token=)[^&]+/i, "$1<redacted>");
+  }
 }
 
 export function resolveExternalBridgeWsUrl(
@@ -36,15 +57,6 @@ export function resolveExternalBridgeWsUrl(
   const env = options.env ?? process.env;
   const stateDir = options.stateDir ?? resolveDesktopStateDir(env);
   const filePath = resolveDesktopWsUrlFilePath(env, stateDir);
-  const envWsUrl = env.T3CODE_DESKTOP_WS_URL?.trim();
-  if (envWsUrl) {
-    return {
-      source: "env",
-      wsUrl: envWsUrl,
-      filePath,
-    };
-  }
-
   const readFileSync = options.readFileSync ?? FS.readFileSync;
   try {
     const fileWsUrl = readFileSync(filePath, "utf8").trim();

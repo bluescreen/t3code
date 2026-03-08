@@ -6,29 +6,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   DESKTOP_WS_URL_FILE_NAME,
+  redactBridgeWsUrlForLog,
   resolveDesktopStateDir,
   resolveDesktopWsUrlFilePath,
   resolveExternalBridgeWsUrl,
 } from "./externalBridge";
 
 describe("externalBridge", () => {
-  it("uses the explicit websocket environment variable when present", () => {
-    const resolved = resolveExternalBridgeWsUrl({
-      env: {
-        T3CODE_DESKTOP_WS_URL: " ws://127.0.0.1:3773/?token=secret ",
-        T3CODE_STATE_DIR: "/tmp/state",
-      },
-    });
-
-    expect(resolved).toEqual({
-      source: "env",
-      wsUrl: "ws://127.0.0.1:3773/?token=secret",
-      filePath: "/tmp/state/desktop-ws-url",
-    });
-  });
-
-  it("reads the websocket URL from the default state file when env is unset", () => {
-    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-desktop-state-"));
+  it("reads the websocket URL from the state file", () => {
+    const stateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "t3code-desktop-state-"),
+    );
     const filePath = path.join(stateDir, DESKTOP_WS_URL_FILE_NAME);
     fs.writeFileSync(filePath, "ws://127.0.0.1:4773/?token=file-secret\n");
 
@@ -45,27 +33,10 @@ describe("externalBridge", () => {
     });
   });
 
-  it("respects an explicit websocket file path override", () => {
-    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-desktop-state-"));
-    const filePath = path.join(stateDir, "denkvis-ws-url.txt");
-    fs.writeFileSync(filePath, "ws://127.0.0.1:5773/?token=file-override");
-
-    const resolved = resolveExternalBridgeWsUrl({
-      env: {
-        T3CODE_STATE_DIR: stateDir,
-        T3CODE_DESKTOP_WS_URL_FILE: filePath,
-      },
-    });
-
-    expect(resolved).toEqual({
-      source: "file",
-      wsUrl: "ws://127.0.0.1:5773/?token=file-override",
-      filePath,
-    });
-  });
-
   it("returns null when the websocket file is empty", () => {
-    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-desktop-state-"));
+    const stateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "t3code-desktop-state-"),
+    );
     fs.writeFileSync(path.join(stateDir, DESKTOP_WS_URL_FILE_NAME), " \n");
 
     expect(
@@ -101,10 +72,23 @@ describe("externalBridge", () => {
   it("resolves the shared state helpers consistently", () => {
     const env = {
       T3CODE_STATE_DIR: "/tmp/custom-state",
-      T3CODE_DESKTOP_WS_URL_FILE: "/tmp/custom-state/ws-url.txt",
     };
 
     expect(resolveDesktopStateDir(env)).toBe("/tmp/custom-state");
-    expect(resolveDesktopWsUrlFilePath(env)).toBe("/tmp/custom-state/ws-url.txt");
+    expect(resolveDesktopWsUrlFilePath(env)).toBe(
+      "/tmp/custom-state/desktop-ws-url",
+    );
+  });
+
+  it("redacts tokens when formatting websocket URLs for logs", () => {
+    expect(
+      redactBridgeWsUrlForLog("ws://127.0.0.1:3773/?token=secret&foo=bar"),
+    ).toBe("ws://127.0.0.1:3773/?token=%3Credacted%3E&foo=bar");
+  });
+
+  it("falls back to regex redaction for invalid URLs", () => {
+    expect(redactBridgeWsUrlForLog("not-a-url?token=secret")).toContain(
+      "token=<redacted>",
+    );
   });
 });

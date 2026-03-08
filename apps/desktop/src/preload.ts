@@ -1,22 +1,31 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge } from "@t3tools/contracts";
-import { resolveDesktopStateDir, resolveExternalBridgeWsUrl } from "./externalBridge";
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const CONFIRM_CHANNEL = "desktop:confirm";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
-const wsUrl = resolveExternalBridgeWsUrl({
-  stateDir: resolveDesktopStateDir(),
-})?.wsUrl ?? null;
+
+function resolveDesktopBridgeWsUrl(): string | null {
+  const runtimeWsUrl = ipcRenderer.sendSync(GET_WS_URL_CHANNEL);
+  const resolved =
+    typeof runtimeWsUrl === "string" && runtimeWsUrl.length > 0
+      ? runtimeWsUrl
+      : null;
+  console.info("[desktopBridge] resolved websocket url from runtime ipc", {
+    hasUrl: resolved !== null,
+  });
+  return resolved;
+}
 
 contextBridge.exposeInMainWorld("desktopBridge", {
-  getWsUrl: () => wsUrl,
+  getWsUrl: () => resolveDesktopBridgeWsUrl(),
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),
   showContextMenu: (items, position) => ipcRenderer.invoke(CONTEXT_MENU_CHANNEL, items, position),

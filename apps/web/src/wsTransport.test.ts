@@ -70,7 +70,7 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
-      location: { hostname: "localhost", port: "3020" },
+      location: { hostname: "localhost", port: "3020", protocol: "http:" },
       desktopBridge: undefined,
     },
   });
@@ -168,6 +168,28 @@ describe("WsTransport", () => {
       reason: "decode-failed",
       issue: expect.stringContaining("SchemaError: Expected string, got 42"),
       raw: '{"type":"push","channel":42,"data":{"bad":true}}',
+    });
+
+    transport.dispose();
+  });
+
+  it("does not fall back to ws://app/ for the desktop scheme", () => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        location: { hostname: "app", port: "", protocol: "t3:" },
+        desktopBridge: {
+          getWsUrl: () => null,
+        },
+      },
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const transport = new WsTransport();
+
+    expect(sockets).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith("[ws] waiting for desktop bridge websocket url", {
+      protocol: "t3:",
     });
 
     transport.dispose();

@@ -205,6 +205,19 @@ export const checkCodexProviderStatus: Effect.Effect<
   ChildProcessSpawner.ChildProcessSpawner
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
+  const denkvisBridgeUrl = process.env.DENKVIS_T3_BRIDGE_URL?.trim();
+  const denkvisRuntimeProvider = process.env.DENKVIS_T3_SELECTED_PROVIDER?.trim() ?? "codex";
+
+  if (denkvisBridgeUrl) {
+    return {
+      provider: CODEX_PROVIDER,
+      status: "ready" as const,
+      available: true,
+      authStatus: "authenticated" as const,
+      checkedAt,
+      message: `Managed by Denkvis bridge (runtime: ${denkvisRuntimeProvider}).`,
+    };
+  }
 
   // Probe 1: `codex --version` — is the CLI reachable?
   const versionProbe = yield* runCodexCommand(["--version"]).pipe(
