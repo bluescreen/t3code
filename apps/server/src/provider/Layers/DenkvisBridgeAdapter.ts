@@ -30,7 +30,7 @@ import { ServerConfig } from "../../config.ts";
 const PROVIDER = "codex" as const;
 
 interface DenkvisBridgeSessionPayload {
-  readonly provider: "codex";
+  readonly provider: string;
   readonly status: "connecting" | "ready" | "running" | "error" | "closed";
   readonly runtimeMode: "approval-required" | "full-access";
   readonly cwd?: string;
@@ -138,7 +138,7 @@ function toProviderSession(
   payload: DenkvisBridgeSessionPayload,
 ): ProviderSession {
   return {
-    provider: payload.provider,
+    provider: PROVIDER,
     status: payload.status,
     runtimeMode: payload.runtimeMode,
     ...(payload.cwd ? { cwd: payload.cwd } : {}),
@@ -154,6 +154,18 @@ function toProviderSession(
     updatedAt: payload.updatedAt,
     ...(payload.lastError ? { lastError: payload.lastError } : {}),
   };
+}
+
+function normalizeRuntimeEventProvider(
+  event: ProviderRuntimeEvent | { type?: string },
+): ProviderRuntimeEvent | { type?: string } {
+  if (!event || typeof event !== "object" || !("provider" in event)) {
+    return event;
+  }
+  return {
+    ...event,
+    provider: PROVIDER,
+  } as ProviderRuntimeEvent;
 }
 
 function toThreadSnapshot(
@@ -219,7 +231,10 @@ const makeAdapter = (options?: DenkvisBridgeAdapterOptions) =>
           return;
         }
         void Effect.runPromise(
-          Queue.offer(runtimeEventQueue, parsed as ProviderRuntimeEvent),
+          Queue.offer(
+            runtimeEventQueue,
+            normalizeRuntimeEventProvider(parsed) as ProviderRuntimeEvent,
+          ),
         );
       } catch {
         // Ignore malformed bridge events and keep the connection alive.
