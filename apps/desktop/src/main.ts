@@ -14,6 +14,7 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import { NetService } from "@t3tools/shared/Net";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { showDesktopConfirmDialog } from "./confirmDialog";
+import { resolveDesktopStateDir, resolveExternalBridgeWsUrl } from "./externalBridge";
 import { fixPath } from "./fixPath";
 import {
   getAutoUpdateDisabledReason,
@@ -43,8 +44,7 @@ const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
-const STATE_DIR =
-  process.env.T3CODE_STATE_DIR?.trim() || Path.join(OS.homedir(), ".t3", "userdata");
+const STATE_DIR = resolveDesktopStateDir();
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -1175,21 +1175,43 @@ configureAppIdentity();
 
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
-  backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap((net) => net.reserveLoopbackPort()),
-    Effect.provide(NetService.layer),
-    Effect.runPromise,
-  );
-  writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
-  backendAuthToken = Crypto.randomBytes(24).toString("hex");
-  backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
-  process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
-  writeDesktopLogHeader(`bootstrap resolved websocket url=${backendWsUrl}`);
+  const externalBridge = resolveExternalBridgeWsUrl({
+    stateDir: STATE_DIR,
+    onReadError: (error, filePath) => {
+      writeDesktopLogHeader(
+        `bootstrap failed to read external websocket url file=${filePath} error=${error.message}`,
+      );
+    },
+  });
+  const useExternalBridge = externalBridge !== null;
+
+  if (useExternalBridge) {
+    backendWsUrl = externalBridge.wsUrl;
+    writeDesktopLogHeader(
+      `bootstrap using external websocket url=${backendWsUrl} source=${externalBridge.source} file=${externalBridge.filePath}`,
+    );
+    process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
+  } else {
+    backendPort = await Effect.service(NetService).pipe(
+      Effect.flatMap((net) => net.reserveLoopbackPort()),
+      Effect.provide(NetService.layer),
+      Effect.runPromise,
+    );
+    writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
+    backendAuthToken = Crypto.randomBytes(24).toString("hex");
+    backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
+    process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
+    writeDesktopLogHeader(`bootstrap resolved websocket url=${backendWsUrl}`);
+  }
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
-  startBackend();
-  writeDesktopLogHeader("bootstrap backend start requested");
+  if (useExternalBridge) {
+    writeDesktopLogHeader("bootstrap skipped backend start because external websocket url is set");
+  } else {
+    startBackend();
+    writeDesktopLogHeader("bootstrap backend start requested");
+  }
   mainWindow = createWindow();
   writeDesktopLogHeader("bootstrap main window created");
 }
