@@ -360,8 +360,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         const routed = yield* resolveRoutableSession({
           threadId: input.threadId,
           operation: "ProviderService.interruptTurn",
-          allowRecovery: true,
+          // Interrupt should be idempotent. If the runtime session is already gone,
+          // there is nothing meaningful to recover just to send an interrupt.
+          allowRecovery: false,
         });
+        if (!routed.isActive) {
+          return;
+        }
         yield* routed.adapter.interruptTurn(routed.threadId, input.turnId);
         yield* analytics.record("provider.turn.interrupted", {
           provider: routed.adapter.provider,

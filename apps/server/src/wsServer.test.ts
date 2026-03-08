@@ -6,7 +6,7 @@ import path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Layer, PlatformError, PubSub, Scope, Stream } from "effect";
 import { describe, expect, it, afterEach, vi } from "vitest";
-import { createServer } from "./wsServer";
+import { createServer, parseNormalizedWebSocketRequest } from "./wsServer";
 import WebSocket from "ws";
 import { ServerConfig, type ServerConfigShape } from "./config";
 import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
@@ -486,6 +486,70 @@ describe("WebSocket Server", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
     vi.restoreAllMocks();
+  });
+
+  it("normalizes legacy claude provider requests before schema validation", () => {
+    const parsed = parseNormalizedWebSocketRequest(
+      JSON.stringify({
+        id: "req-legacy-provider",
+        body: {
+          _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+          command: {
+            type: "thread.turn.start",
+            commandId: "cmd-legacy-provider",
+            threadId: "thread-legacy-provider",
+            message: {
+              messageId: "msg-legacy-provider",
+              role: "user",
+              text: "hello",
+              attachments: [],
+            },
+            provider: "claude",
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-03-08T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    expect(parsed._tag).toBe("Success");
+    if (parsed._tag === "Success") {
+      expect(parsed.value.body._tag).toBe(ORCHESTRATION_WS_METHODS.dispatchCommand);
+      if (parsed.value.body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+        expect(parsed.value.body.command.type).toBe("thread.turn.start");
+        if (parsed.value.body.command.type === "thread.turn.start") {
+          expect(parsed.value.body.command.provider).toBe("denkvis");
+        }
+      }
+    }
+  });
+
+  it("normalizes legacy claude providerName fields before schema validation", () => {
+    const parsed = parseNormalizedWebSocketRequest(
+      JSON.stringify({
+        id: "req-legacy-provider-name",
+        body: {
+          _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+          command: {
+            type: "thread.create",
+            commandId: "cmd-legacy-provider-name",
+            threadId: "thread-legacy-provider-name",
+            projectId: "project-legacy-provider-name",
+            title: "Legacy thread",
+            model: "managed",
+            providerName: "claude",
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: "2026-03-08T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    expect(parsed._tag).toBe("Success");
   });
 
   it("sends welcome message on connect", async () => {

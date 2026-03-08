@@ -74,6 +74,7 @@ import {
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { expandHomePath } from "./os-jank.ts";
+import { normalizeLegacyProviderValue } from "./legacyProvider.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -148,6 +149,18 @@ function websocketRawToString(raw: unknown): string | null {
     return chunks.join("");
   }
   return null;
+}
+
+export function parseNormalizedWebSocketRequest(messageText: string) {
+  try {
+    return Schema.decodeUnknownExit(WebSocketRequest)(
+      normalizeLegacyProviderValue(JSON.parse(messageText)),
+    );
+  } catch (cause) {
+    return Exit.fail(
+      Cause.die(cause instanceof Error ? cause : new Error(String(cause))),
+    );
+  }
 }
 
 function toPosixRelativePath(input: string): string {
@@ -918,7 +931,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       return;
     }
 
-    const request = Schema.decodeExit(Schema.fromJsonString(WebSocketRequest))(messageText);
+    const request = parseNormalizedWebSocketRequest(messageText);
     if (request._tag === "Failure") {
       const errorResponse = yield* encodeResponse({
         id: "unknown",
